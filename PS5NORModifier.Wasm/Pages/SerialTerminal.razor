@@ -1,0 +1,73 @@
+﻿@page "/serial"
+@using PS5NORModifier.Wasm.Services
+
+<h3>Serial Console</h3>
+
+<div>
+    <FluentButton Appearance="@Appearance.Accent" OnClick="PickPort">Select Port…</FluentButton>
+    <button @onclick="PickPort">Select Port…</button>
+    <button @onclick="OpenPort" disabled="@(!_portPicked)">Open @_baudRate Baud</button>
+    <button @onclick="ClosePort" disabled="@(!_portOpen)">Close</button>
+    <FluentButton OnClick="ClosePort" Disabled="@(!_portOpen)">Close</FluentButton>
+</div>
+
+<div>
+    <label>Baud rate:
+        <input type="number" @bind="_baudRate"/>
+    </label>
+</div>
+
+<div>
+    <textarea rows="10" cols="60" @bind="_consoleText" readonly></textarea>
+</div>
+
+<div>
+    <input @bind="_outgoing" @onkeypress="OnKeyPress" placeholder="Type and press Enter"/>
+</div>
+
+@code {
+    bool _portPicked = false, _portOpen = false;
+    int _baudRate = 115200;
+    string _consoleText = "";
+    string _outgoing;
+
+    async Task PickPort()
+    {
+        var result = await Serial.RequestPortAsync();
+        _portPicked = true;
+    }
+
+    async Task OpenPort()
+    {
+        SerialService.Response result = await Serial.OpenPortAsync(_baudRate);
+        _portOpen = result.Code == SerialService.ResponseCode.Success;
+        _ = PollReads(); // fire-and-forget
+    }
+
+    async Task PollReads()
+    {
+        while (_portOpen)
+        {
+            var chunk = await Serial.ReadAsync();
+            if (chunk == null) break;
+            _consoleText += chunk;
+            StateHasChanged();
+        }
+    }
+
+    async Task ClosePort()
+    {
+        _portOpen = false;
+        await Serial.CloseAsync();
+    }
+
+    async Task OnKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrEmpty(_outgoing))
+        {
+            await Serial.WriteAsync(_outgoing + "\n");
+            _outgoing = "";
+        }
+    }
+
+}
